@@ -1,1 +1,4 @@
 rootProject.name = 'room-reservation-saga'
+
+include 'outer-system'
+include 'inner-system'
