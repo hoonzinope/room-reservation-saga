@@ -1,4 +1,4 @@
-# Room Reservation Lab
+# Room Reservation Saga
 
 ## 목표
 
@@ -19,7 +19,7 @@
 # 전체 구조
 
 ```text
-room-reservation-lab
+room-reservation-saga
 │
 ├── inner-system
 │
