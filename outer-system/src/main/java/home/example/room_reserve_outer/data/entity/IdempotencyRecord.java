@@ -1,8 +1,11 @@
 package home.example.room_reserve_outer.data.entity;
 
+import lombok.Data;
+
 import javax.persistence.*;
 import java.time.LocalDateTime;
 
+@Data
 @Entity
 @Table(
         name = "idempotency_records",

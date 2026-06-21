@@ -1,8 +1,11 @@
 package home.example.room_reserve_outer.data.entity;
 
+import lombok.Getter;
+
 import javax.persistence.*;
 import java.time.LocalDateTime;
 
+@Getter
 @Entity
 @Table(name = "rooms")
 public class Room {
