@@ -102,6 +102,30 @@ class ReservationControllerIntegrationTest {
     }
 
     @Test
+    void checkRoomAvailabilityWithDateRange_withoutOverlappingReservation_returnsAvailable() throws Exception {
+        mockMvc.perform(get("/rooms/{roomNumber}/availability", "101")
+                        .queryParam("checkIn", "2026-07-01")
+                        .queryParam("checkOut", "2026-07-03"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.roomNumber").value("101"))
+                .andExpect(jsonPath("$.availability").value(true))
+                .andExpect(jsonPath("$.msg").value("room is available"));
+    }
+
+    @Test
+    void checkRoomAvailabilityWithDateRange_withOverlappingReservation_returnsReserved() throws Exception {
+        reservationRepository.save(buildConfirmedReservation("101"));
+
+        mockMvc.perform(get("/rooms/{roomNumber}/availability", "101")
+                        .queryParam("checkIn", "2026-07-11")
+                        .queryParam("checkOut", "2026-07-13"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.roomNumber").value("101"))
+                .andExpect(jsonPath("$.availability").value(false))
+                .andExpect(jsonPath("$.msg").value("room is already reserved"));
+    }
+
+    @Test
     void listRooms_returnsRoomNumberBasedRooms() throws Exception {
         mockMvc.perform(get("/rooms"))
                 .andExpect(status().isOk())

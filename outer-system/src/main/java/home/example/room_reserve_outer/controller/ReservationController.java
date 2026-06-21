@@ -10,8 +10,10 @@ import home.example.room_reserve_outer.service.RandomFailureSimulator;
 import home.example.room_reserve_outer.service.ReservationService;
 import home.example.room_reserve_outer.service.RoomService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Slf4j
@@ -47,6 +49,19 @@ public class ReservationController {
         log.info("room availability processed roomNumber={} availability={} message={}",
                 response.getRoomNumber(), response.getAvailability(), response.getMsg());
         maybeSimulateFailure("check-room-availability");
+        return response;
+    }
+
+    @GetMapping("/rooms/{room_number}/availability")
+    public RoomAvailability checkRoomAvailability(
+            @PathVariable(value = "room_number", required = true) String room_number,
+            @RequestParam(value = "checkIn", required = true) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+            @RequestParam(value = "checkOut", required = true) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {
+        log.info("room date availability request roomNumber={} checkIn={} checkOut={}", room_number, checkIn, checkOut);
+        RoomAvailability response = roomService.checkRoomAvailability(room_number, checkIn, checkOut);
+        log.info("room date availability processed roomNumber={} checkIn={} checkOut={} availability={} message={}",
+                response.getRoomNumber(), checkIn, checkOut, response.getAvailability(), response.getMsg());
+        maybeSimulateFailure("check-room-date-availability");
         return response;
     }
 
