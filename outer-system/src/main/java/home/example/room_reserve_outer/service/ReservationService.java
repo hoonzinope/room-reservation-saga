@@ -68,8 +68,19 @@ public class ReservationService {
         return successResponse;
     }
 
-    public void checkBook() {
-        // reservation_id로 예약 성공 여부 반환
+    @Transactional(readOnly = true)
+    public ReservationResponse checkBook(long reservationId) {
+        Optional<Reservation> optionalReservation = reservationRepository.findById(reservationId);
+        if(!optionalReservation.isPresent()) {
+            return buildCheckFailedResponse(reservationId, ReservationError.RESERVATION_NOT_FOUND);
+        }
+
+        Reservation reservation = optionalReservation.get();
+        if(!Status.CONFIRMED.getCode().equalsIgnoreCase(reservation.getStatus())) {
+            return buildCheckFailedResponse(reservation, ReservationError.RESERVATION_NOT_CONFIRMED);
+        }
+
+        return buildCheckSuccessResponse(reservation);
     }
 
     public void cancelBook() {
@@ -178,6 +189,44 @@ public class ReservationService {
                 .is_success(ReservationResult.SUCCESS)
                 .error_msg(null)
                 .build();
+    }
+
+    private ReservationResponse buildCheckSuccessResponse(Reservation reservation) {
+        return ReservationResponse.builder()
+                .reservation_id(reservation.getId())
+                .room_number(findRoomNumber(reservation.getRoomId()))
+                .operation(Operation.CHECK_RESERVATION.getCode())
+                .is_success(ReservationResult.SUCCESS)
+                .error_msg(null)
+                .build();
+    }
+
+    private ReservationResponse buildCheckFailedResponse(long reservationId, ReservationError error) {
+        return ReservationResponse.builder()
+                .reservation_id(reservationId)
+                .operation(Operation.CHECK_RESERVATION.getCode())
+                .is_success(ReservationResult.FAILED)
+                .error_msg(error)
+                .build();
+    }
+
+    private ReservationResponse buildCheckFailedResponse(Reservation reservation, ReservationError error) {
+        return ReservationResponse.builder()
+                .reservation_id(reservation.getId())
+                .room_number(findRoomNumber(reservation.getRoomId()))
+                .operation(Operation.CHECK_RESERVATION.getCode())
+                .is_success(ReservationResult.FAILED)
+                .error_msg(error)
+                .build();
+    }
+
+    private String findRoomNumber(long roomId) {
+        Optional<Room> optionalRoom = roomRepository.findById(roomId);
+        if(!optionalRoom.isPresent()) {
+            return null;
+        }
+
+        return optionalRoom.get().getRoomNumber();
     }
 
     private void saveRecord(ReservationRequest request, ReservationResponse response) {

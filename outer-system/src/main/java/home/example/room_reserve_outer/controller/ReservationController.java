@@ -5,7 +5,6 @@ import home.example.room_reserve_outer.data.dto.ReservationResponse;
 import home.example.room_reserve_outer.data.dto.RoomAvailability;
 import home.example.room_reserve_outer.service.ReservationService;
 import home.example.room_reserve_outer.service.RoomService;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -32,9 +31,9 @@ public class ReservationController {
     }
 
     @GetMapping("/reservation/{reservationId}")
-    public String checkReservation(
+    public ReservationResponse checkReservation(
             @PathVariable(value = "reservationId", required = true) long reservationId) {
-        return "ok";
+        return reservationService.checkBook(reservationId);
     }
 
     @DeleteMapping("/reservation/{reservationId}")

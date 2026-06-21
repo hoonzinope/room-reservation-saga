@@ -12,6 +12,8 @@ public enum ReservationError {
     OPERATION("operation error", "지원하지 않는 예약 작업"),
     ROOM_NOT_AVAILABLE("room is not available", "예약할 수 없는 객실"),
     ROOM_ALREADY_RESERVED("room is already reserved", "이미 예약된 객실"),
+    RESERVATION_NOT_FOUND("reservation is not found", "존재하지 않는 예약"),
+    RESERVATION_NOT_CONFIRMED("reservation is not confirmed", "확정 상태가 아닌 예약"),
     IDEMPOTENCY_CONFLICT("idempotency key conflict", "멱등성 키 충돌");
 
     @JsonValue
