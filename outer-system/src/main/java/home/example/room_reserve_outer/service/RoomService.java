@@ -1,12 +1,15 @@
 package home.example.room_reserve_outer.service;
 
 import home.example.room_reserve_outer.data.dto.RoomAvailability;
+import home.example.room_reserve_outer.data.dto.RoomResponse;
 import home.example.room_reserve_outer.data.entity.Room;
 import home.example.room_reserve_outer.repository.RoomRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -45,6 +48,24 @@ public class RoomService {
             log.warn("room availability check failed roomNumber={} reason=not-found", room_number);
         }
         return roomAvailability;
+    }
+
+    public List<RoomResponse> findRooms() {
+        log.info("room list started");
+        List<RoomResponse> rooms = roomRepository.findAll().stream()
+                .map(this::toRoomResponse)
+                .collect(Collectors.toList());
+        log.info("room list completed count={}", rooms.size());
+        return rooms;
+    }
+
+    private RoomResponse toRoomResponse(Room room) {
+        return RoomResponse.builder()
+                .room_number(room.getRoomNumber())
+                .room_type(room.getRoomType())
+                .status(room.getStatus())
+                .availability(room.isAvailable())
+                .build();
     }
 
 }

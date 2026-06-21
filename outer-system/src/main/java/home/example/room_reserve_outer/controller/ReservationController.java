@@ -4,12 +4,15 @@ import home.example.room_reserve_outer.data.dto.ReservationRequest;
 import home.example.room_reserve_outer.data.dto.ReservationCancelRequest;
 import home.example.room_reserve_outer.data.dto.ReservationResponse;
 import home.example.room_reserve_outer.data.dto.RoomAvailability;
+import home.example.room_reserve_outer.data.dto.RoomResponse;
 import home.example.room_reserve_outer.data.type.ReservationResult;
 import home.example.room_reserve_outer.service.RandomFailureSimulator;
 import home.example.room_reserve_outer.service.ReservationService;
 import home.example.room_reserve_outer.service.RoomService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @Slf4j
 @RestController
@@ -25,6 +28,15 @@ public class ReservationController {
         this.roomService = roomService;
         this.reservationService = reservationService;
         this.randomFailureSimulator = randomFailureSimulator;
+    }
+
+    @GetMapping("/rooms")
+    public List<RoomResponse> listRooms() {
+        log.info("room list request");
+        List<RoomResponse> response = roomService.findRooms();
+        log.info("room list processed count={}", response.size());
+        maybeSimulateFailure("list-rooms");
+        return response;
     }
 
     @GetMapping("/rooms/{room_number}/available")

@@ -1,10 +1,13 @@
 package home.example.room_reserve_outer.service;
 
 import home.example.room_reserve_outer.data.dto.RoomAvailability;
+import home.example.room_reserve_outer.data.dto.RoomResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -43,5 +46,31 @@ class RoomServiceTest {
         assertThat(response.getRoomNumber()).isEqualTo("999");
         assertThat(response.getAvailability()).isFalse();
         assertThat(response.getMsg()).isEqualTo("room not exist");
+    }
+
+    @Test
+    void findRooms_returnsRoomNumberBasedSummariesWithoutInternalIds() {
+        List<RoomResponse> response = roomService.findRooms();
+
+        assertThat(response).hasSize(5);
+        assertThat(response)
+                .extracting(RoomResponse::getRoom_number)
+                .containsExactlyInAnyOrder("101", "102", "201", "202", "301");
+        assertThat(response)
+                .filteredOn(room -> "101".equals(room.getRoom_number()))
+                .singleElement()
+                .satisfies(room -> {
+                    assertThat(room.getRoom_type()).isEqualTo("STANDARD");
+                    assertThat(room.getStatus()).isEqualTo("AVAILABLE");
+                    assertThat(room.getAvailability()).isTrue();
+                });
+        assertThat(response)
+                .filteredOn(room -> "202".equals(room.getRoom_number()))
+                .singleElement()
+                .satisfies(room -> {
+                    assertThat(room.getRoom_type()).isEqualTo("DELUXE");
+                    assertThat(room.getStatus()).isEqualTo("MAINTENANCE");
+                    assertThat(room.getAvailability()).isFalse();
+                });
     }
 }

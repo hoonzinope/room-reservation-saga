@@ -19,6 +19,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -98,6 +99,17 @@ class ReservationControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.roomNumber").value("101"))
                 .andExpect(jsonPath("$.availability").value(true));
+    }
+
+    @Test
+    void listRooms_returnsRoomNumberBasedRooms() throws Exception {
+        mockMvc.perform(get("/rooms"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$[?(@.room_number == '101')].room_type").value(hasItem("STANDARD")))
+                .andExpect(jsonPath("$[?(@.room_number == '101')].availability").value(hasItem(true)))
+                .andExpect(jsonPath("$[?(@.room_number == '202')].status").value(hasItem("MAINTENANCE")))
+                .andExpect(jsonPath("$[?(@.room_number == '202')].availability").value(hasItem(false)));
     }
 
     @Test
