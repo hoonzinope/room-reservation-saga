@@ -12,6 +12,7 @@ import home.example.room_reserve_outer.data.type.Status;
 import home.example.room_reserve_outer.repository.RecordRepository;
 import home.example.room_reserve_outer.repository.ReservationRepository;
 import home.example.room_reserve_outer.repository.RoomRepository;
+import home.example.room_reserve_outer.util.HashUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -70,11 +71,13 @@ public class ReservationService {
 
     @Transactional(readOnly = true)
     public ReservationResponse checkBook(long reservationId) {
+        // reservation id로 예약 정보를 조회한다.
         Optional<Reservation> optionalReservation = reservationRepository.findById(reservationId);
         if(!optionalReservation.isPresent()) {
             return buildCheckFailedResponse(reservationId, ReservationError.RESERVATION_NOT_FOUND);
         }
 
+        // 확정 상태의 예약만 조회 성공으로 응답한다.
         Reservation reservation = optionalReservation.get();
         if(!Status.CONFIRMED.getCode().equalsIgnoreCase(reservation.getStatus())) {
             return buildCheckFailedResponse(reservation, ReservationError.RESERVATION_NOT_CONFIRMED);
@@ -83,8 +86,51 @@ public class ReservationService {
         return buildCheckSuccessResponse(reservation);
     }
 
-    public void cancelBook() {
-        // reservation_id로 예약 취소
+    @Transactional
+    public ReservationResponse cancelBook(long reservationId, String idempotencyKey, String createIdempotencyKey) {
+        // 취소 요청에도 idempotency key를 필수로 요구한다.
+        if(isBlank(idempotencyKey) || isBlank(createIdempotencyKey)) {
+            return buildCancelFailedResponse(reservationId, ReservationError.PARAM);
+        }
+
+        // 동일한 취소 요청이 이미 처리되었다면 저장된 응답을 반환한다.
+        String requestHash = buildCancelRequestHash(reservationId, createIdempotencyKey);
+        ReservationResponse idempotentResponse = findExistingCancelIdempotentResponse(idempotencyKey, requestHash);
+        if(idempotentResponse != null) {
+            return idempotentResponse;
+        }
+
+        // 취소 대상 예약이 존재하는지 확인한다.
+        Optional<Reservation> optionalReservation = reservationRepository.findById(reservationId);
+        if(!optionalReservation.isPresent()) {
+            return rejectCancelAndRecord(idempotencyKey, requestHash,
+                    buildCancelFailedResponse(reservationId, idempotencyKey, ReservationError.RESERVATION_NOT_FOUND));
+        }
+
+        Reservation reservation = optionalReservation.get();
+        // 예약 생성 시 사용한 idempotency key가 일치해야 취소할 수 있다.
+        if(!createIdempotencyKey.equals(reservation.getCreateIdempotencyKey())) {
+            return rejectCancelAndRecord(idempotencyKey, requestHash,
+                    buildCancelFailedResponse(reservation, idempotencyKey, ReservationError.RESERVATION_CREATE_KEY_MISMATCH));
+        }
+
+        // 이미 취소된 예약은 다시 취소하지 않고 실패 응답을 기록한다.
+        if(Status.CANCELLED.getCode().equalsIgnoreCase(reservation.getStatus())) {
+            return rejectCancelAndRecord(idempotencyKey, requestHash,
+                    buildCancelFailedResponse(reservation, idempotencyKey, ReservationError.RESERVATION_ALREADY_CANCELLED));
+        }
+
+        // 확정 상태가 아닌 예약은 취소할 수 없다.
+        if(!Status.CONFIRMED.getCode().equalsIgnoreCase(reservation.getStatus())) {
+            return rejectCancelAndRecord(idempotencyKey, requestHash,
+                    buildCancelFailedResponse(reservation, idempotencyKey, ReservationError.RESERVATION_NOT_CONFIRMED));
+        }
+
+        // 예약을 취소하고 성공 응답을 idempotency record에 저장한다.
+        cancelReservation(reservation, idempotencyKey);
+        ReservationResponse response = buildCancelSuccessResponse(reservation, idempotencyKey);
+        saveRecord(idempotencyKey, Operation.CANCEL_RESERVATION, requestHash, response, reservation.getId());
+        return response;
     }
 
     private ReservationResponse validateCreateRequest(ReservationRequest request) {
@@ -136,6 +182,19 @@ public class ReservationService {
             IdempotencyRecord record = optionalRecord.get();
             if(record.getRequestHash() != null && !record.getRequestHash().equals(request.hash())) {
                 return buildFailedResponse(request, ReservationError.IDEMPOTENCY_CONFLICT);
+            }
+            ReservationResponse response = ReservationResponse.builder().build();
+            return response.payloadToResponse(record.getResponsePayload());
+        }
+        return null;
+    }
+
+    private ReservationResponse findExistingCancelIdempotentResponse(String idempotencyKey, String requestHash) {
+        Optional<IdempotencyRecord> optionalRecord = recordRepository.findByIdempotencyKey(idempotencyKey);
+        if(optionalRecord.isPresent()) {
+            IdempotencyRecord record = optionalRecord.get();
+            if(record.getRequestHash() != null && !record.getRequestHash().equals(requestHash)) {
+                return buildCancelFailedResponse((Long) null, idempotencyKey, ReservationError.IDEMPOTENCY_CONFLICT);
             }
             ReservationResponse response = ReservationResponse.builder().build();
             return response.payloadToResponse(record.getResponsePayload());
@@ -229,25 +288,95 @@ public class ReservationService {
         return optionalRoom.get().getRoomNumber();
     }
 
+    private void cancelReservation(Reservation reservation, String idempotencyKey) {
+        LocalDateTime now = LocalDateTime.now();
+        reservation.setStatus(Status.CANCELLED.getCode());
+        reservation.setCancelIdempotencyKey(idempotencyKey);
+        reservation.setCancelledAt(now);
+        reservation.setUpdatedAt(now);
+        reservationRepository.save(reservation);
+    }
+
+    private ReservationResponse buildCancelSuccessResponse(Reservation reservation, String idempotencyKey) {
+        return ReservationResponse.builder()
+                .idempotency_key(idempotencyKey)
+                .reservation_id(reservation.getId())
+                .room_number(findRoomNumber(reservation.getRoomId()))
+                .operation(Operation.CANCEL_RESERVATION.getCode())
+                .is_success(ReservationResult.SUCCESS)
+                .error_msg(null)
+                .build();
+    }
+
+    private ReservationResponse buildCancelFailedResponse(Long reservationId, String idempotencyKey, ReservationError error) {
+        return ReservationResponse.builder()
+                .idempotency_key(idempotencyKey)
+                .reservation_id(reservationId)
+                .operation(Operation.CANCEL_RESERVATION.getCode())
+                .is_success(ReservationResult.FAILED)
+                .error_msg(error)
+                .build();
+    }
+
+    private ReservationResponse buildCancelFailedResponse(long reservationId, ReservationError error) {
+        return buildCancelFailedResponse(reservationId, null, error);
+    }
+
+    private ReservationResponse buildCancelFailedResponse(Reservation reservation, String idempotencyKey, ReservationError error) {
+        return ReservationResponse.builder()
+                .idempotency_key(idempotencyKey)
+                .reservation_id(reservation.getId())
+                .room_number(findRoomNumber(reservation.getRoomId()))
+                .operation(Operation.CANCEL_RESERVATION.getCode())
+                .is_success(ReservationResult.FAILED)
+                .error_msg(error)
+                .build();
+    }
+
     private void saveRecord(ReservationRequest request, ReservationResponse response) {
         saveRecord(request, response, response.getReservation_id());
     }
 
     private void saveRecord(ReservationRequest request, ReservationResponse response, Long resourceId) {
+        saveRecord(request.getIdempotency_key(), Operation.CREATE_RESERVATION, request.hash(), response, resourceId);
+    }
+
+    private void saveRecord(String idempotencyKey,
+                            Operation operation,
+                            String requestHash,
+                            ReservationResponse response,
+                            Long resourceId) {
         LocalDateTime now = LocalDateTime.now();
         IdempotencyRecord record = new IdempotencyRecord();
-        record.setIdempotencyKey(request.getIdempotency_key());
-        record.setOperationType(Operation.CREATE_RESERVATION.getCode());
+        record.setIdempotencyKey(idempotencyKey);
+        record.setOperationType(operation.getCode());
         record.setResourceType(RESOURCE_TYPE_RESERVATION);
         if(resourceId != null) {
             record.setResourceId(resourceId);
         }
-        record.setRequestHash(request.hash());
+        record.setRequestHash(requestHash);
         record.setResponsePayload(response.toPayload());
         record.setHttpStatus(resolveHttpStatus(response));
         record.setCreatedAt(now);
         record.setUpdatedAt(now);
         recordRepository.save(record);
+    }
+
+    private ReservationResponse rejectCancelAndRecord(String idempotencyKey, String requestHash, ReservationResponse response) {
+        saveRecord(idempotencyKey, Operation.CANCEL_RESERVATION, requestHash, response, response.getReservation_id());
+        return response;
+    }
+
+    private String buildCancelRequestHash(long reservationId, String createIdempotencyKey) {
+        String input = String.join("|",
+                Operation.CANCEL_RESERVATION.getCode(),
+                String.valueOf(reservationId),
+                String.valueOf(createIdempotencyKey));
+        return HashUtil.hash(input);
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 
     private int resolveHttpStatus(ReservationResponse response) {

@@ -14,6 +14,8 @@ public enum ReservationError {
     ROOM_ALREADY_RESERVED("room is already reserved", "이미 예약된 객실"),
     RESERVATION_NOT_FOUND("reservation is not found", "존재하지 않는 예약"),
     RESERVATION_NOT_CONFIRMED("reservation is not confirmed", "확정 상태가 아닌 예약"),
+    RESERVATION_ALREADY_CANCELLED("reservation is already cancelled", "이미 취소된 예약"),
+    RESERVATION_CREATE_KEY_MISMATCH("reservation create key mismatch", "예약 생성 멱등성 키 불일치"),
     IDEMPOTENCY_CONFLICT("idempotency key conflict", "멱등성 키 충돌");
 
     @JsonValue

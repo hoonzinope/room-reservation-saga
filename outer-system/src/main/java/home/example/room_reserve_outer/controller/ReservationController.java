@@ -37,8 +37,10 @@ public class ReservationController {
     }
 
     @DeleteMapping("/reservation/{reservationId}")
-    public String cancelReservation(
-            @PathVariable(value = "reservationId", required = true) long reservationId) {
-        return "ok";
+    public ReservationResponse cancelReservation(
+            @PathVariable(value = "reservationId", required = true) long reservationId,
+            @RequestParam(value = "idempotency_key", required = true) String idempotencyKey,
+            @RequestParam(value = "create_idempotency_key", required = true) String createIdempotencyKey) {
+        return reservationService.cancelBook(reservationId, idempotencyKey, createIdempotencyKey);
     }
 }
