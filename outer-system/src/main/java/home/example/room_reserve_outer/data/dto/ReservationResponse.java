@@ -2,6 +2,7 @@ package home.example.room_reserve_outer.data.dto;
 
 import home.example.room_reserve_outer.data.type.ReservationError;
 import home.example.room_reserve_outer.data.type.ReservationResult;
+import home.example.room_reserve_outer.data.type.Status;
 import lombok.Builder;
 import lombok.Data;
 
@@ -15,6 +16,7 @@ public class ReservationResponse {
     private Long reservation_id;
     private String room_number;
     private String operation;
+    private Status status;
     private ReservationResult is_success;
     private ReservationError error_msg;
 
@@ -24,6 +26,7 @@ public class ReservationResponse {
         sb.append("reservation_id=").append(this.reservation_id).append("\n");
         sb.append("room_number=").append(this.room_number).append("\n");
         sb.append("operation=").append(this.operation).append("\n");
+        sb.append("status=").append(this.status == null ? null : this.status.getCode()).append("\n");
         sb.append("is_success=").append(this.is_success == null ? null : this.is_success.getCode()).append("\n");
         sb.append("error_msg=").append(this.error_msg == null ? null : this.error_msg.getCode()).append("\n");
         return sb.toString();
@@ -59,6 +62,7 @@ public class ReservationResponse {
                 .reservation_id(parseLong(reservationIdValue))
                 .room_number(values.get("room_number"))
                 .operation(values.get("operation"))
+                .status(Status.fromCode(values.get("status")))
                 .is_success(ReservationResult.fromCode(values.get("is_success")))
                 .error_msg(ReservationError.fromCode(values.get("error_msg")))
                 .build();

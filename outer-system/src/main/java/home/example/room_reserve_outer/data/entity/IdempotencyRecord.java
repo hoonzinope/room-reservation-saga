@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
         }
         )
 public class IdempotencyRecord {
-    @Id @GeneratedValue(strategy = GenerationType.AUTO)
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private long id;
     private String idempotencyKey;
     private String operationType;

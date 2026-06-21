@@ -37,6 +37,10 @@ public class ReservationService {
 
     @Transactional
     public ReservationResponse book(ReservationRequest reservationRequest) {
+        if(reservationRequest == null) {
+            return buildFailedResponse(null, ReservationError.PARAM);
+        }
+
         // 동일한 idempotency key로 처리된 요청이 있으면 저장된 응답을 반환한다.
         ReservationResponse idempotentResponse = findExistingIdempotentResponse(reservationRequest);
         if(idempotentResponse != null) {
@@ -46,6 +50,9 @@ public class ReservationService {
         // 필수값, 날짜, 생성 operation 여부를 검증하고 실패 응답을 기록한다.
         ReservationResponse validationFailure = validateCreateRequest(reservationRequest);
         if(validationFailure != null) {
+            if(isBlank(reservationRequest.getIdempotency_key())) {
+                return validationFailure;
+            }
             return rejectAndRecord(reservationRequest, validationFailure);
         }
 
@@ -77,12 +84,7 @@ public class ReservationService {
             return buildCheckFailedResponse(reservationId, ReservationError.RESERVATION_NOT_FOUND);
         }
 
-        // 확정 상태의 예약만 조회 성공으로 응답한다.
         Reservation reservation = optionalReservation.get();
-        if(!Status.CONFIRMED.getCode().equalsIgnoreCase(reservation.getStatus())) {
-            return buildCheckFailedResponse(reservation, ReservationError.RESERVATION_NOT_CONFIRMED);
-        }
-
         return buildCheckSuccessResponse(reservation);
     }
 
@@ -177,6 +179,10 @@ public class ReservationService {
     }
 
     private ReservationResponse findExistingIdempotentResponse(ReservationRequest request) {
+        if(request == null || isBlank(request.getIdempotency_key())) {
+            return null;
+        }
+
         Optional<IdempotencyRecord> optionalRecord = recordRepository.findByIdempotencyKey(request.getIdempotency_key());
         if(optionalRecord.isPresent()) {
             IdempotencyRecord record = optionalRecord.get();
@@ -217,9 +223,9 @@ public class ReservationService {
 
     private ReservationResponse buildFailedResponse(ReservationRequest request, ReservationError error) {
         return ReservationResponse.builder()
-                .idempotency_key(request.getIdempotency_key())
-                .room_number(request.getRoom_number())
-                .operation(request.getOperation())
+                .idempotency_key(request == null ? null : request.getIdempotency_key())
+                .room_number(request == null ? null : request.getRoom_number())
+                .operation(request == null ? null : request.getOperation())
                 .is_success(ReservationResult.FAILED)
                 .error_msg(error)
                 .build();
@@ -245,6 +251,7 @@ public class ReservationService {
                 .reservation_id(reservation.getId())
                 .room_number(request.getRoom_number())
                 .operation(request.getOperation())
+                .status(Status.CONFIRMED)
                 .is_success(ReservationResult.SUCCESS)
                 .error_msg(null)
                 .build();
@@ -255,6 +262,7 @@ public class ReservationService {
                 .reservation_id(reservation.getId())
                 .room_number(findRoomNumber(reservation.getRoomId()))
                 .operation(Operation.CHECK_RESERVATION.getCode())
+                .status(Status.fromCode(reservation.getStatus()))
                 .is_success(ReservationResult.SUCCESS)
                 .error_msg(null)
                 .build();
@@ -274,6 +282,7 @@ public class ReservationService {
                 .reservation_id(reservation.getId())
                 .room_number(findRoomNumber(reservation.getRoomId()))
                 .operation(Operation.CHECK_RESERVATION.getCode())
+                .status(Status.fromCode(reservation.getStatus()))
                 .is_success(ReservationResult.FAILED)
                 .error_msg(error)
                 .build();
@@ -303,6 +312,7 @@ public class ReservationService {
                 .reservation_id(reservation.getId())
                 .room_number(findRoomNumber(reservation.getRoomId()))
                 .operation(Operation.CANCEL_RESERVATION.getCode())
+                .status(Status.CANCELLED)
                 .is_success(ReservationResult.SUCCESS)
                 .error_msg(null)
                 .build();
@@ -328,6 +338,7 @@ public class ReservationService {
                 .reservation_id(reservation.getId())
                 .room_number(findRoomNumber(reservation.getRoomId()))
                 .operation(Operation.CANCEL_RESERVATION.getCode())
+                .status(Status.fromCode(reservation.getStatus()))
                 .is_success(ReservationResult.FAILED)
                 .error_msg(error)
                 .build();

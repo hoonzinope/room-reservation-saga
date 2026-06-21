@@ -17,7 +17,7 @@ public class RoomService {
     }
 
     public RoomAvailability checkRoomAvailable(String room_number) {
-        Optional<Room> optionalRoom = roomRepository.findByRoomNumber(room_number);
+        Optional<Room> optionalRoom = roomRepository.findForAvailabilityCheck(room_number);
         RoomAvailability roomAvailability = new RoomAvailability();
         roomAvailability.setRoomNumber(room_number);
 
