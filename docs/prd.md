@@ -4,25 +4,74 @@
 
 본 프로젝트는 다음 개념을 학습하기 위한 실습 프로젝트이다.
 
-* Hexagonal Architecture
-* Saga Pattern
-* Compensation Transaction (보상 트랜잭션)
-* Idempotency (멱등성)
-* 외부 API 연동
-* 장애 복구 및 재시도
-* 상태 머신 기반 비즈니스 처리
+- Saga Pattern
+- Compensation Transaction (보상 트랜잭션)
+- Idempotency (멱등성)
+- 외부 API 연동
+- 장애 복구 및 재시도
+- 상태 머신 기반 비즈니스 처리
+- 관심사 단위 패키징
 
 실제 회사 프로젝트에서 여러 단계의 외부 API 호출을 수행하며 안전성을 보장해야 하는 상황을 가정한다.
 
 ---
 
-# 전체 구조
+## 아키텍처 결정
+
+`inner-system`은 Hexagonal Architecture를 전면 적용하지 않는다.
+
+참고한 글: [Hexagonal Architecture, 진짜 하실 건가요?](https://tech.kakaopay.com/post/home-hexagonal-architecture/)
+
+해당 글은 Hexagonal Architecture가 외부 의존성으로부터 도메인을 보호하는 장점이 있지만, 보호해야 할 도메인 모델이 명확하지 않거나 외부 연동 중심의 기능이 많은 경우 Port, Adapter, DTO, 매핑 로직이 과도하게 늘어날 수 있음을 설명한다.
+
+이 프로젝트의 핵심 도메인은 예약 자체보다 다음 흐름에 있다.
+
+```text
+외부 API 호출
+Saga 단계 저장
+중복 요청 방지
+실패 지점부터 재시도
+필요 시 보상 트랜잭션 실행
+```
+
+따라서 엄격한 Hexagonal Architecture 대신, 기능 관심사를 기준으로 묶고 그 아래에 `web`, `service`, `infra`를 두는 단순한 레이어드 구조를 사용한다.
+
+### 패키지 원칙
+
+```text
+home.example.room_reserve_inner
+├── reservation
+│   ├── web
+│   ├── service
+│   └── infra
+├── saga
+│   ├── service
+│   └── infra
+└── common
+```
+
+- `web`: Controller, HTTP 요청/응답 DTO, API 예외 응답
+- `service`: 유스케이스, 트랜잭션 경계, Saga 단계 전환, 보상 판단
+- `infra`: Outer System 클라이언트, DB Entity, Repository, 외부 장애 대응 구현
+- `common`: 공통 예외, 설정, 여러 관심사에서 공유하는 타입
+
+### 의존성 방향
+
+```text
+web -> service -> infra
+```
+
+서비스 계층은 비즈니스 흐름을 읽는 중심이 된다. 외부 API 호출이나 DB 접근은 `infra`에 둔다. 다만 이 프로젝트에서는 학습 비용을 낮추기 위해 모든 외부 의존성을 Port 인터페이스로 감싸는 방식을 기본으로 하지 않는다.
+
+외부 API 변경 가능성이 커지거나 테스트 격리가 필요한 경우에만 필요한 지점에 작은 인터페이스를 추가한다.
+
+---
+
+## 전체 구조
 
 ```text
 room-reservation-saga
-│
 ├── inner-system
-│
 └── outer-system
 ```
 
@@ -30,12 +79,12 @@ room-reservation-saga
 
 외부 예약 시스템 역할.
 
-실제 호텔 예약 시스템 또는 외부 공급사 API를 단순화한 형태.
+실제 호텔 예약 시스템 또는 외부 공급사 API를 단순화한 형태이다.
 
 ### 기술 스택
 
-* Spring Boot
-* H2 In-Memory DB
+- Spring Boot
+- H2 In-Memory DB
 
 ### 기능
 
@@ -44,17 +93,16 @@ room-reservation-saga
 예약 취소
 예약 조회
 방 상태 조회
+멱등성 키 처리
+장애 시뮬레이션
 ```
 
 ### API
 
 ```http
 GET    /rooms/{roomId}/availability
-
 POST   /reservations
-
 GET    /reservations/{reservationId}
-
 DELETE /reservations/{reservationId}
 ```
 
@@ -62,30 +110,29 @@ DELETE /reservations/{reservationId}
 
 ## Inner System
 
-실제 비즈니스 로직을 수행하는 시스템.
-
-Hexagonal Architecture의 적용 대상.
+Saga 흐름과 내부 예약 API를 수행하는 시스템.
 
 ### 기술 스택
 
-* Spring Boot
-* H2 In-Memory DB
+- Spring Boot
+- H2 In-Memory DB
 
 ### 기능
 
 ```text
 방 예약
-
 방 변경
-
 방 취소
+Saga 상태 저장
+Saga 재시도
+보상 트랜잭션
 ```
 
 ---
 
-# 프로젝트 목표
+## 프로젝트 목표
 
-## 방 예약
+### 방 예약
 
 ```text
 1. 방 가능 여부 확인
@@ -93,9 +140,7 @@ Hexagonal Architecture의 적용 대상.
 3. 예약 완료
 ```
 
----
-
-## 방 변경
+### 방 변경
 
 ```text
 1. 새 방 확인
@@ -104,7 +149,7 @@ Hexagonal Architecture의 적용 대상.
 4. 변경 완료
 ```
 
-### 핵심 시나리오
+핵심 시나리오:
 
 ```text
 새 예약 생성 성공
@@ -116,9 +161,7 @@ Hexagonal Architecture의 적용 대상.
 
 이 상황을 어떻게 처리할지 실습한다.
 
----
-
-## 방 취소
+### 방 취소
 
 ```text
 1. 예약 존재 확인
@@ -128,87 +171,7 @@ Hexagonal Architecture의 적용 대상.
 
 ---
 
-# Hexagonal Architecture
-
-## 패키지 구조
-
-```text
-inner-system
-
-com.example.inner
-
-├── domain
-│
-├── application
-│
-├── adapter
-│   ├── in
-│   └── out
-│
-└── config
-```
-
----
-
-## Domain
-
-비즈니스 규칙.
-
-```text
-Reservation
-
-ReservationStatus
-
-ReservationPolicy
-```
-
-Spring Framework에 의존하지 않는다.
-
----
-
-## Application
-
-유스케이스.
-
-```text
-ReserveRoomUseCase
-
-ChangeRoomUseCase
-
-CancelRoomUseCase
-```
-
----
-
-## Inbound Adapter
-
-외부 요청 진입점.
-
-```text
-REST Controller
-
-Scheduler
-
-Message Consumer
-```
-
----
-
-## Outbound Adapter
-
-외부 자원 연결.
-
-```text
-Outer Reservation API
-
-Persistence
-
-Message Queue
-```
-
----
-
-# Saga Pattern
+## Saga Pattern
 
 예약 변경은 하나의 Saga로 관리한다.
 
@@ -230,9 +193,7 @@ Message Queue
 
 각 단계는 DB에 저장된다.
 
----
-
-## Saga 상태 예시
+### Saga 상태 예시
 
 ```text
 PENDING
@@ -252,7 +213,7 @@ MANUAL_REVIEW
 
 ---
 
-# 보상 트랜잭션
+## 보상 트랜잭션
 
 예시:
 
@@ -264,7 +225,7 @@ MANUAL_REVIEW
 기존 예약 취소 실패
 ```
 
-선택 가능한 전략
+선택 가능한 전략:
 
 ### 전략 A
 
@@ -282,11 +243,11 @@ MANUAL_REVIEW
 
 ---
 
-# 멱등성
+## 멱등성
 
 외부 API는 멱등성 키를 지원한다.
 
-## 예약 생성
+### 예약 생성
 
 ```http
 POST /reservations
@@ -295,9 +256,7 @@ Idempotency-Key:
 3f74d8d4-a0f5-42c4
 ```
 
----
-
-## 예약 취소
+### 예약 취소
 
 ```http
 DELETE /reservations/{id}
@@ -306,9 +265,7 @@ Idempotency-Key:
 c95fca2d-f9d2-4562
 ```
 
----
-
-## 예약 조회
+### 예약 조회
 
 ```http
 GET /reservations/{id}
@@ -318,9 +275,9 @@ GET /reservations/{id}
 
 ---
 
-# Inner DB 설계
+## Inner DB 설계
 
-## reservation_saga
+### reservation_saga
 
 ```text
 id
@@ -342,9 +299,7 @@ created_at
 updated_at
 ```
 
----
-
-## reservation_saga_step
+### reservation_saga_step
 
 ```text
 id
@@ -372,7 +327,7 @@ updated_at
 
 ---
 
-# 장애 시뮬레이션
+## 장애 시뮬레이션
 
 Outer System은 랜덤 장애를 발생시킨다.
 
@@ -381,7 +336,7 @@ reservation:
   failure-rate: 0.2
 ```
 
-20% 확률로
+20% 확률로 다음 장애가 발생한다.
 
 ```text
 500 Error
@@ -391,15 +346,13 @@ Timeout
 Connection Reset
 ```
 
-발생.
-
 ---
 
-# 검증 목표
+## 검증 목표
 
-## 1차 목표
+### 1차 목표
 
-정상 플로우
+정상 플로우:
 
 ```text
 예약 생성
@@ -409,11 +362,9 @@ Connection Reset
 예약 취소
 ```
 
----
+### 2차 목표
 
-## 2차 목표
-
-장애 대응
+장애 대응:
 
 ```text
 Timeout
@@ -425,11 +376,9 @@ Timeout
 응답 유실
 ```
 
----
+### 3차 목표
 
-## 3차 목표
-
-복구
+복구:
 
 ```text
 재시도
@@ -443,30 +392,26 @@ Saga 재실행
 
 ---
 
-# 학습 포인트
+## 학습 포인트
 
 본 프로젝트의 핵심은 예약 시스템이 아니다.
 
 핵심은 다음과 같다.
 
 ```text
-Hexagonal Architecture
-
-+
 Saga Pattern
 
 +
+
 Compensation Transaction
 
 +
+
 Idempotency
 
 +
+
 외부 API 장애 대응
 ```
 
-정상 케이스 구현보다
-
-"중간에 실패했을 때 어떻게 복구할 것인가"
-
-를 학습하는 것이 최종 목표이다.
+정상 케이스 구현보다 "중간에 실패했을 때 어떻게 복구할 것인가"를 학습하는 것이 최종 목표이다.
